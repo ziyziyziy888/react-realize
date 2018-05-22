@@ -141,6 +141,7 @@ class Component {
 
 const React = {
 	createElement,
+	Component,
 }
 
 const ReactDom = {
@@ -181,15 +182,30 @@ const ReactDom = {
 	* }
 */
 
-function diff(dom, vnode) {
+
+function diff(dom, vnode, container) {
+	const ret = diffNode(dom, vnode);
+	if (container && ret.parentNode !== container) {
+		container.appendChild(ret);
+	}
+
+	return ret;
+}
+
+function diffNode(dom, vnode) {
+
+	let out = dom;
+	if (vnode === undefined || vnode === null || typeof vnode === 'boolean') vnode = '';
+
+	if (typeof vnode === 'number') vnode = String(vnode);
 
 	if (typeof vnode === 'string') {
+// 文本节点		
+
 		if (dom && dom.nodeType === 3) {
-			if (dom.textContent !== vnode) {
-				dom.textContent = vnode;
-			}
+			dom.textContent = vnode;
 		} else {
-			const out = document.createTextNode(vnode);
+			out = document.createTextNode(vnode);
 			if (dom && dom.parentNode) {
 				dom.parentNode.replaceChild(out, dom);
 			}
@@ -197,8 +213,15 @@ function diff(dom, vnode) {
 		return out;
 	}
 
-	if (!dom || dom.nodeName.toLowerCase() !== vnode.tag.toLowerCase()) {
+	if (typeof vnode === 'function') {
+		return diffComponent(dom, vnode);
+	}
+
+
+// 跨级了
+	if (!dom || !isSameNodeType(dom, vnode)) {
 		out = document.createElement(vnode.tag);
+
 		if (dom) {
 			[...dom.childNodes].map(out.appendChild);
 
@@ -208,29 +231,33 @@ function diff(dom, vnode) {
 		}
 	}
 
-
-// 这里是不是 dom 啊？一脸懵逼
-	if (vnode.children && vnode.children.length > 0 || (out.appendChild && out.childNodes.length > 0)) {
+	if (vnode.children && vnode.children.length > 0 || (out.childNodes && out.childNodes.length > 0)) {
 		diffChildren(out, vnode.children);
 	}
+
+	diffAttributes(out, vnode);
+
+	return out;
 }
 
 
 function diffChildren(dom, vchildren) {
 	const domChildren = dom.childNodes;
 	const children = [];
+
 	const keyed = {};
 
-// 将有key的节点和没有key的节点分开
 	if (domChildren.length > 0) {
-		for (let i = 0; i < domChildren.length; i++) {
+		for (let i = 0; i < domChildren.length; i ++) {
 			const child = domChildren[i];
 			const key = child.key;
+
 			if (key) {
 				keyed[key] = child;
 			} else {
 				children.push(child);
 			}
+
 		}
 	}
 
@@ -244,25 +271,33 @@ function diffChildren(dom, vchildren) {
 			let child;
 
 			if (key) {
-				child = keyed[key];
-				keyed[key] = undefined;
+
+				if (keyed[key]) {
+					child = keyed[key];
+					keyed[key] = undefined;
+				}
 			} else if (min < childrenLen) {
+
 				for (let j = min; j < childrenLen; j ++) {
 					let c = children[j];
+
 					if (c && isSameNodeType(c, vchild)) {
 						child = c;
 						children[j] = undefined;
-						if (j === children2 - 1) childrenLen --;
+
+						if (j === childrenLen - 1) childrenLen --;
 						if (j === min) min ++;
-						break;
 					}
 				}
+
 			}
 
-			child = diff(child, vchild);
+			child = diffNode(child, vchild);
 
 			const f = domChildren[i];
+
 			if (child && child !== dom && child !== f) {
+
 				if (!f) {
 					dom.appendChild(child);
 				} else if (child === f.nextSibling) {
@@ -270,7 +305,9 @@ function diffChildren(dom, vchildren) {
 				} else {
 					dom.insertBefore(child, f);
 				}
+
 			}
+
 		}
 	}
 }
@@ -284,12 +321,13 @@ function diffComponent(dom, vnode) {
 		setComponentProps(c, vnode.attrs);
 		dom = c.base;
 	} else {
+
 		if (c) {
-			unmountComponents(c);
+			unmountComponent(c);
 			oldDom = null;
 		}
-		c = createComponent(vnode.tag, vnode.attrs);
 
+		c = createComponent(vnode.tag, vnode.attrs);
 		setComponentProps(c, vnode.attrs);
 		dom = c.base;
 
@@ -297,62 +335,89 @@ function diffComponent(dom, vnode) {
 			oldDom._component = null;
 			removeNode(oldDom);
 		}
+
+		return dom;
 	}
-	return dom;
+
 }
-
-
 
 function diffAttributes(dom, vnode) {
 	const old = {};
 	const attrs = vnode.attrs;
-	for (let i = 0; i < dom.length; i++) {
+
+	for (let i = 0; i < dom.attributes.length; i ++) {
 		const attr = dom.attributes[i];
 		old[attr.name] = attr.value;
 	}
 
 	for (let name in old) {
+
 		if (!(name in attrs)) {
-			setAttribute(dom, name, attrs[name]);
+			setAttribute(dom, name, undefined);
 		}
 	}
+
+	for (let name in attrs) {
+
+		if (old[name] !== attrs[name]) {
+			setAttribute(dom, name, attrs[name]);
+		}
+
+	}
+
 }
+
+
+function removeNode(dom) {
+
+	if (dom && dom.parentNode) {
+		dom.parentNode.removeChild(dom);
+	}
+
+}
+
+
+function isSameNodeType(dom, vnode) {
+
+	if (typeof vnode === 'string' || typeof vnode === 'number') {
+		return dom.nodeType === 3;
+	}
+
+	if (typeof vnode.tag === 'string') {
+		return dom.nodeName.toLowerCase() === vnode.tag.toLowerCase();
+	}
+
+	return dom && dom._component && dom._component.constructor === vnode.tag;
+}
+
+
+
+
 
 
 class Counter extends React.Component {
-  constructor(props) {
-      super(props);
-      this.state = {
-          num: 1
-      }
-  }
+    constructor( props ) {
+        super( props );
+        this.state = {
+            num: 1
+        }
+    }
 
-  onClick() {
-      this.setState( { num: this.state.num + 1 } );
-  }
+    onClick() {
+        this.setState( { num: this.state.num + 1 } );
+    }
 
-  render() {
-      return (
-          <div>
-              <h1>count: { this.state.num }</h1>
-              <button onClick={ () => this.onClick()}>add</button>
-          </div>
-      );
-  }
+    render() {
+        return (
+            <div>
+                <h1>count: { this.state.num }</h1>
+                <button onClick={ () => this.onClick()}>add</button>
+            </div>
+        );
+    }
 }
 
-ReactDom.render(
-	<Counter />,
-	document.getElementById('root'),
-);
-
-
-
-
-
-
-
-
+ReactDom.render(<Counter />, document.getElementById('root'));
 
 
 
