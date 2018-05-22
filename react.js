@@ -107,17 +107,13 @@ function renderComponent(component) {
 
 	// base = _render(renderer);
 
-	base = diff(component.base, renderer);
+	base = diffNode(component.base, renderer);
 
 
 	if (component.base) {
 		if (component.componentDidUpdate) component.componentDidUpdate();
 	} else if (component.componentDidMount) {
 		component.componentDidMount();
-	}
-
-	if (component.base && component.base.parentNode) {
-		component.base.parentNode.replaceChild(base, component.base);
 	}
 
 	component.base = base;
