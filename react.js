@@ -377,6 +377,12 @@ function removeNode(dom) {
 }
 
 
+function unmountComponent(component) {
+	if (component.componentWillUnmount) component.componentWillUnmount();
+	removeNode(component.base);
+}
+
+
 function isSameNodeType(dom, vnode) {
 
 	if (typeof vnode === 'string' || typeof vnode === 'number') {
